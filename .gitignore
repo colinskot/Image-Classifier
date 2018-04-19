@@ -48,3 +48,5 @@ Temporary Items
 
 # Other: data, pycache, jupyter
 /data
+/__pycache__
+/cifar-10-batches-py
