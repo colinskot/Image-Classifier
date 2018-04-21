@@ -1,32 +1,12 @@
 import tensorflow as tf
 import numpy as np
-
-save_model_path = './image_classification'
-
-# placeholders
-x = tf.placeholder(tf.float32, shape=(None, 32, 32, 3), name='x')
-y = tf.placeholder(tf.float32, shape=(None, 10), name='y')
-# keep_prob = tf.placeholder(tf.float32, name='keep_prob')
+import data_helper as data
 
 
-def batch_normalization(x):
-    """
-    Normalizes the current batch
-    :param x: inputs
-    """
-
-    # calculate mean, variance, scale, etc.
-    mean, var = tf.nn.moments(x, [0])
-    beta = tf.Variable(tf.zeros([x.shape[1]]))
-    scale = tf.Variable(tf.ones([x.shape[1]]))
-    epsilon = 1e-3
-
-    bn = tf.nn.batch_normalization(x, mean, var, beta, scale, epsilon)
-
-    return bn
+save_model_path = './saved-model'
 
 
-def build_graph(x):
+def build_model():
     """
     Builds neural network model
     :param x: image inputs
@@ -77,45 +57,92 @@ def build_graph(x):
     return output
 
 
-def train_model():
+def train_model(logits):
+
+    # Name logits Tensor, so that is can be loaded from disk after training
+    logits = tf.identity(logits, name='logits')
+
+    # Loss and Optimizer
+    cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=y))
+    optimizer = tf.train.AdamOptimizer().minimize(cost)
+
+    # Accuracy
+    correct_pred = tf.equal(tf.argmax(logits, 1), tf.argmax(y, 1))
+    accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32), name='accuracy')
+
 
     print('Training...')
     with tf.Session() as sess:
-        # Initializing the variables
+
+        # initialize variables
         sess.run(tf.global_variables_initializer())
 
-        # Training cycle
+        # training cycle
         for epoch in range(epochs):
             # Loop over all batches
-            n_batches = 5
-            for batch_i in range(1, n_batches + 1):
-                for batch_features, batch_labels in helper.load_preprocess_training_batch(batch_i, batch_size):
-                    session.run(optimizer, feed_dict={x: feature_batch, y: label_batch, keep_prob: keep_probability})
-                print('Epoch {:>2}, CIFAR-10 Batch {}:  '.format(epoch + 1, batch_i), end='')
+            for batch_i in range(1, 6):
+                for feature_batch, label_batch in data.load_training_batch(batch_i, batch_size):
+                    sess.run(optimizer, feed_dict={x: feature_batch, y: label_batch, keep_prob: 1.0})
+
+                print('Epoch {}, CIFAR-10 Batch {}:  '.format(epoch + 1, batch_i), end='')
+
                 # calculate loss & validation
-                loss = session.run(cost, feed_dict={x: feature_batch, y: label_batch, keep_prob: 1.0})
-                valid_acc = session.run(accuracy, feed_dict={x: valid_features, y: valid_labels, keep_prob: 1.0})
+                loss = sess.run(cost, feed_dict={x: feature_batch, y: label_batch, keep_prob: 1.0})
+                valid_acc = sess.run(accuracy, feed_dict={x: valid_features, y: valid_labels, keep_prob: 1.0})
 
                 # print loss & validation
                 print('Loss: {:>10.4f} Validation Accuracy: {:.6f}'.format(loss, valid_acc))
 
-        # Save Model
+        # save model
         saver = tf.train.Saver()
         save_path = saver.save(sess, save_model_path)
 
 
 def test_model():
     # TO DO
-    pass
+    print('Testing Model...')
 
 
-build_graph(x)
+def batch_normalization(x):
+    """
+    Normalizes the current batch
+    :param x: inputs
+    """
+
+    # calculate mean, variance, scale, etc.
+    mean, var = tf.nn.moments(x, [0])
+    beta = tf.Variable(tf.zeros([x.shape[1]]))
+    scale = tf.Variable(tf.ones([x.shape[1]]))
+    epsilon = 1e-3
+
+    bn = tf.nn.batch_normalization(x, mean, var, beta, scale, epsilon)
+
+    return bn
 
 
 if __name__ == '__main__':
 
-    # preprocess training, validation, testing data
-    helper.preprocess_and_save_data(cifar10_dataset_folder_path, normalize, one_hot_encode)
+    # choose type of data set, download, preprocess
+    data.download('cifar10')
+    data.preprocess_and_save()
 
-    # Load the Preprocessed Validation data
-    valid_features, valid_labels = pickle.load(open('preprocess_validation.p', mode='rb'))
+    # hyperparameters
+    epochs = 25
+    batch_size = 256
+
+    # remove previous weights, bias, inputs, etc.
+    tf.reset_default_graph()
+
+    # placeholders
+    x = tf.placeholder(tf.float32, shape=(None, 32, 32, 3), name='x')
+    y = tf.placeholder(tf.int32, shape=(None, 10), name='y')
+    keep_prob = tf.placeholder(tf.float32, name='keep_prob')
+
+    # build model
+    logits = build_model()
+
+    # train model
+    train_model(logits)
+
+    # test model
+    test_model()
